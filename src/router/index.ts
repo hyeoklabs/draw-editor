@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 
+const routerBase = import.meta.env.BASE_URL || '/draw-editor/'
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -10,7 +12,7 @@ const routes: RouteRecordRaw[] = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(routerBase),
   routes,
 })
 
