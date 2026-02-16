@@ -23,6 +23,14 @@ interface JpegConvertOptions {
   maxHeight?: number
 }
 
+interface MarkStatePayload {
+  hasChecked: boolean
+  markCount: number
+}
+
+// eslint-disable-next-line no-unused-vars
+type MarkStateListener = (_payload: MarkStatePayload) => void
+
 export function useDrawEditor() {
   // ---------------------------------------------------------------------------
   // 1) 에디터 상태: 모드, 스타일, 줌, 팬
@@ -55,6 +63,7 @@ export function useDrawEditor() {
   const baseImage = ref<HTMLImageElement | null>(null)
   const baseImageSrc = ref('')
   const marks = ref<CheckMark[]>([])
+  const markStateListeners = new Set<MarkStateListener>()
 
   const pinchState = ref({
     initialDistance: 0,
@@ -67,11 +76,40 @@ export function useDrawEditor() {
     panning: false,
     panStartX: 0,
     panStartY: 0,
+    panMoveDistance: 0,
   })
+
+  // 기기별 터치 흔들림 특성 보정값
+  // 안드로이드(갤럭시 태블릿 포함)는 미세 이동 노이즈가 상대적으로 큰 편이라 임계값을 완화한다.
+  const isAndroidDevice = /Android/i.test(navigator.userAgent)
+  const TOUCH_PAN_START_THRESHOLD = isAndroidDevice ? 12 : 8
+  const TOUCH_TAP_MAX_DISTANCE = isAndroidDevice ? 16 : 10
 
   // ---------------------------------------------------------------------------
   // 4) 저수준 수학 유틸 (clamp, 경계, transform)
   // ---------------------------------------------------------------------------
+
+  // 현재 마크 상태(체크 존재 여부/개수)를 외부 구독자에게 전파한다.
+  function emitMarkStateChanged() {
+    const payload: MarkStatePayload = {
+      hasChecked: marks.value.length > 0,
+      markCount: marks.value.length,
+    }
+
+    for (const listener of markStateListeners) {
+      listener(payload)
+    }
+  }
+
+  // 외부(HomeView 등)에서 마크 상태 변화를 구독할 수 있는 이벤트 API.
+  function onMarkStateChange(listener: MarkStateListener) {
+    markStateListeners.add(listener)
+    listener({ hasChecked: marks.value.length > 0, markCount: marks.value.length })
+
+    return () => {
+      markStateListeners.delete(listener)
+    }
+  }
 
   // 숫자를 [min, max] 범위로 고정한다.
   function clampValue(value: number, min: number, max: number) {
@@ -325,6 +363,7 @@ export function useDrawEditor() {
     baseImage.value = img
     baseImageSrc.value = src
     marks.value = []
+    emitMarkStateChanged()
 
     // 실제 이미지 해상도(원본 픽셀)를 캔버스 내부 버퍼 크기로 사용한다.
     setCanvasSize(img.naturalWidth, img.naturalHeight)
@@ -416,6 +455,7 @@ export function useDrawEditor() {
   async function restore(payload: RestorePayload) {
     await loadBaseImage(payload.baseImageSrc)
     marks.value = payload.marks.map((item) => ({ ...item }))
+    emitMarkStateChanged()
     render()
   }
 
@@ -485,6 +525,7 @@ export function useDrawEditor() {
       removeNearMark(x, y)
     }
 
+    emitMarkStateChanged()
     render()
   }
 
@@ -542,6 +583,7 @@ export function useDrawEditor() {
     pinchState.value.pinching = false
     pinchState.value.panStartX = touch.clientX
     pinchState.value.panStartY = touch.clientY
+    pinchState.value.panMoveDistance = 0
     pinchState.value.initialPanX = panX.value
     pinchState.value.initialPanY = panY.value
   }
@@ -577,7 +619,9 @@ export function useDrawEditor() {
 
       const dx = touch.clientX - pinchState.value.panStartX
       const dy = touch.clientY - pinchState.value.panStartY
-      const movedEnough = Math.sqrt(dx * dx + dy * dy) >= 4
+      const moveDistance = Math.sqrt(dx * dx + dy * dy)
+      const movedEnough = moveDistance >= TOUCH_PAN_START_THRESHOLD
+      pinchState.value.panMoveDistance = moveDistance
 
       // 클릭 의도로 시작한 터치를 pan으로 오인하지 않도록 최소 이동 임계값을 둔다.
       if (!pinchState.value.panning && !movedEnough) {
@@ -600,9 +644,21 @@ export function useDrawEditor() {
     const hasChangedTouch = Boolean(changed)
     const wasPinchingOrPanning = pinchState.value.pinching || pinchState.value.panning
 
+    const canTreatAsTapAfterPan =
+      pinchState.value.panning &&
+      !pinchState.value.pinching &&
+      event.touches.length === 0 &&
+      hasChangedTouch &&
+      pinchState.value.panMoveDistance <= TOUCH_TAP_MAX_DISTANCE
+
     // 단일 탭은 지연 없이 바로 체크/지우기를 수행한다.
-    if (!wasPinchingOrPanning && event.touches.length === 0 && hasChangedTouch) {
+    if (
+      (!wasPinchingOrPanning && event.touches.length === 0 && hasChangedTouch) ||
+      canTreatAsTapAfterPan
+    ) {
       applyMarkOrErase(changed.clientX, changed.clientY)
+      pinchState.value.panning = false
+      pinchState.value.panMoveDistance = 0
       return
     }
 
@@ -611,9 +667,12 @@ export function useDrawEditor() {
       return
     }
 
-    blockClickUntil.value = now + 350
+    if (pinchState.value.pinching) {
+      blockClickUntil.value = now + 350
+    }
     pinchState.value.pinching = false
     pinchState.value.panning = false
+    pinchState.value.panMoveDistance = 0
     pinchState.value.initialDistance = 0
     pinchState.value.initialScale = zoomScale.value
     pinchState.value.initialPanX = panX.value
@@ -623,6 +682,7 @@ export function useDrawEditor() {
   // 마크만 초기화하고 베이스 이미지는 유지한다.
   function clearMarks() {
     marks.value = []
+    emitMarkStateChanged()
     render()
   }
 
@@ -900,6 +960,7 @@ export function useDrawEditor() {
 
     // 편집
     clearMarks,
+    onMarkStateChange,
 
     // 완료/내보내기
     complete,

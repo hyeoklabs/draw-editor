@@ -52,7 +52,7 @@
       </label>
 
       <div class="button-group action-buttons">
-        <button @click="onSave">Save</button>
+        <button :disabled="!canSave" @click="onSave">Save</button>
         <button @click="onReset">Reset</button>
         <button @click="() => editor?.resetZoom()">Reset Zoom</button>
       </div>
@@ -74,8 +74,10 @@ const markerSize = ref(54)
 const markerColor = ref('#ef4444')
 const zoomMin = ref(1)
 const zoomMax = ref(4)
+const canSave = ref(false)
 const savedPreviewUrl = ref('')
 const savedBlobKey = ref('')
+const unsubscribeMarkState = ref<(() => void) | null>(null)
 const db = useDatabase()
 
 onMounted(async () => {
@@ -86,6 +88,12 @@ onMounted(async () => {
   if (canvasWrapRef.value) {
     editor.value?.mountCanvas(canvasWrapRef.value)
   }
+
+  unsubscribeMarkState.value =
+    editor.value?.onMarkStateChange(({ hasChecked }) => {
+      canSave.value = hasChecked
+    }) ?? null
+
   editor.value?.setZoomRange(zoomMin.value, zoomMax.value)
   await editor.value?.loadBaseImage(IMAGE)
   editor.value?.setMarkSize(markerSize.value)
@@ -93,6 +101,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  unsubscribeMarkState.value?.()
+  unsubscribeMarkState.value = null
+
   editor.value?.unmountCanvas()
 
   if (savedPreviewUrl.value) {
@@ -135,6 +146,8 @@ watch(zoomMax, (value) => {
 })
 
 async function onSave() {
+  if (!canSave.value) return
+
   const data = await editor.value?.complete()
   if (!data) return
 
