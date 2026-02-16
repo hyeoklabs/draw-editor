@@ -15,7 +15,7 @@
 - 베이스 이미지 로드
 - 체크 마크 추가 (`dot`, `circle`, `check`)
 - 체크 영역 지우기
-- 줌/팬 (휠, 핀치, 더블클릭)
+- 줌/팬 (핀치)
 - 결과 이미지 최적화 (`jpeg`, `webp`, `png`)
 - 다운로드/파일 변환 유틸
 
@@ -109,7 +109,7 @@ onUnmounted(() => {
 
 #### `mountCanvas(container: HTMLDivElement): void`
 - 컨테이너 내부에 캔버스를 동적으로 생성
-- 이벤트(pointer/touch/wheel 등) 등록
+- 이벤트(pointer/touch 등) 등록
 - 리사이즈 옵저버 등록
 
 호출 타이밍:
@@ -220,11 +220,6 @@ onUnmounted(() => {
   - 핀치 줌
   - 1손가락 팬(확대 상태)
   - 단일 탭 체크
-- `wheel`
-  - 휠/트랙패드 줌
-- `dblclick`
-  - 더블클릭 줌 토글
-
 단일 탭 체크는 지연 없이 즉시 처리됩니다.
 
 ---

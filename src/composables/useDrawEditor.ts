@@ -214,8 +214,6 @@ export function useDrawEditor() {
 
     // 입력 이벤트를 canvas 자체에 직접 연결한다.
     canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('dblclick', onDoubleClick)
-    canvas.addEventListener('wheel', onWheel, { passive: false })
     canvas.addEventListener('touchstart', onTouchStart, { passive: false })
     canvas.addEventListener('touchmove', onTouchMove, { passive: false })
     canvas.addEventListener('touchend', onTouchEnd)
@@ -250,8 +248,6 @@ export function useDrawEditor() {
     const canvas = canvasRef.value
     if (canvas) {
       canvas.removeEventListener('pointerdown', onPointerDown)
-      canvas.removeEventListener('dblclick', onDoubleClick)
-      canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchmove', onTouchMove)
       canvas.removeEventListener('touchend', onTouchEnd)
@@ -493,7 +489,7 @@ export function useDrawEditor() {
   }
 
   // ---------------------------------------------------------------------------
-  // 9) 입력 이벤트 프로세스: 포인터, 터치, 휠, 더블클릭
+  // 9) 입력 이벤트 프로세스: 포인터, 터치
   // ---------------------------------------------------------------------------
 
   // 마우스/펜 계열 입력: click 누락 이슈를 피하기 위해 pointerdown 기준으로 처리한다.
@@ -503,7 +499,7 @@ export function useDrawEditor() {
       return
     }
 
-    // 더블클릭 두 번째 입력은 마크 추가를 막고, 확대/축소만 수행한다.
+    // 더블클릭 두 번째 입력(마우스 연속 클릭)은 중복 체크를 막기 위해 무시한다.
     if (event.detail > 1) {
       return
     }
@@ -622,35 +618,6 @@ export function useDrawEditor() {
     pinchState.value.initialScale = zoomScale.value
     pinchState.value.initialPanX = panX.value
     pinchState.value.initialPanY = panY.value
-  }
-
-  // 마우스 더블클릭: 확대/축소 토글
-  function onDoubleClick(event: MouseEvent) {
-    const zoomStep = Math.max(2, Number((minZoom.value * 2).toFixed(2)))
-    const targetScale = zoomScale.value > minZoom.value + 0.2 ? minZoom.value : zoomStep
-    zoomAt(event.clientX, event.clientY, targetScale)
-    blockClickUntil.value = Date.now() + 250
-  }
-
-  // 휠/트랙패드 입력: 포인터 위치를 기준으로 연속 확대/축소
-  function onWheel(event: WheelEvent) {
-    event.preventDefault()
-
-    const lineHeight = 16
-    const pageHeight = window.innerHeight || 800
-    const unit =
-      event.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? lineHeight
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? pageHeight
-          : 1
-
-    const delta = event.deltaY * unit
-    const sensitivity = event.ctrlKey ? 0.0035 : 0.0016
-    const factor = Math.exp(-delta * sensitivity)
-
-    zoomAt(event.clientX, event.clientY, zoomScale.value * factor)
-    blockClickUntil.value = Date.now() + 120
   }
 
   // 마크만 초기화하고 베이스 이미지는 유지한다.
