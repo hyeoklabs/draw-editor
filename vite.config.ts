@@ -8,6 +8,10 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   base: '/draw-editor/',
   plugins: [vue()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+  },
   build: {
     outDir: 'docs',
   },

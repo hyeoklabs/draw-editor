@@ -103,6 +103,16 @@ onUnmounted(() => {
 | `panX` / `panY` | `Ref<number>` | 팬 이동값 |
 | `marks` | `Ref<CheckMark[]>` | 현재 체크 데이터 |
 
+### 4.1.1 상태 이벤트
+
+#### `onMarkStateChange(listener): () => void`
+- 체크 상태 변경 이벤트를 구독합니다.
+- 반환값은 구독 해제 함수입니다.
+
+이벤트 payload:
+- `hasChecked: boolean` : 체크가 1개 이상인지 여부
+- `markCount: number` : 현재 체크 개수
+
 ---
 
 ### 4.2 생명주기 API
@@ -173,6 +183,10 @@ onUnmounted(() => {
 
 #### `clearMarks(): void`
 - 체크 데이터만 비우고 베이스 이미지는 유지
+
+실무 활용 예시:
+- `onMarkStateChange`로 `Save` 버튼 활성/비활성 제어
+- `hasChecked === false`이면 저장 버튼 비활성화
 
 ---
 

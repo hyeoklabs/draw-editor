@@ -52,10 +52,14 @@
       </label>
 
       <div class="button-group action-buttons">
-        <button :disabled="!canSave" @click="onSave">Save</button>
+        <button :disabled="!canSave || isSaving" @click="onSave">
+          {{ isSaving ? 'Saving...' : 'Save' }}
+        </button>
         <button @click="onReset">Reset</button>
         <button @click="() => editor?.resetZoom()">Reset Zoom</button>
       </div>
+
+      <p v-if="saveError" class="error-message">{{ saveError }}</p>
     </aside>
   </section>
 </template>
@@ -67,14 +71,21 @@ import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import IMAGE from '@/assets/test.jpg'
 
+const DEFAULT_MARK_SIZE = 54
+const DEFAULT_MARK_COLOR = '#ef4444'
+const DEFAULT_MIN_ZOOM = 1
+const DEFAULT_MAX_ZOOM = 4
+
 const editor = ref<ReturnType<typeof useDrawEditor> | null>(null)
 const canvasWrapRef = ref<HTMLDivElement | null>(null)
 
-const markerSize = ref(54)
-const markerColor = ref('#ef4444')
-const zoomMin = ref(1)
-const zoomMax = ref(4)
+const markerSize = ref(DEFAULT_MARK_SIZE)
+const markerColor = ref(DEFAULT_MARK_COLOR)
+const zoomMin = ref(DEFAULT_MIN_ZOOM)
+const zoomMax = ref(DEFAULT_MAX_ZOOM)
 const canSave = ref(false)
+const isSaving = ref(false)
+const saveError = ref('')
 const savedPreviewUrl = ref('')
 const savedBlobKey = ref('')
 const unsubscribeMarkState = ref<(() => void) | null>(null)
@@ -146,26 +157,39 @@ watch(zoomMax, (value) => {
 })
 
 async function onSave() {
-  if (!canSave.value) return
+  if (!canSave.value || isSaving.value) return
 
-  const data = await editor.value?.complete()
-  if (!data) return
+  isSaving.value = true
+  saveError.value = ''
 
-  if (savedBlobKey.value) {
-    await db.deleteImageBlob(savedBlobKey.value).catch(() => {})
+  try {
+    const data = await editor.value?.complete()
+    if (!data) return
+
+    if (savedBlobKey.value) {
+      await db.deleteImageBlob(savedBlobKey.value).catch(() => {})
+    }
+
+    const blobKey = await db.putImageBlob(data.optimizedBlob)
+    savedBlobKey.value = blobKey
+
+    const blob = await db.getImageBlob(blobKey)
+    if (!blob) {
+      throw new Error('저장된 Blob을 다시 읽지 못했습니다.')
+    }
+
+    if (savedPreviewUrl.value) {
+      URL.revokeObjectURL(savedPreviewUrl.value)
+    }
+
+    savedPreviewUrl.value = URL.createObjectURL(blob)
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : '저장 중 알 수 없는 오류가 발생했습니다.'
+    saveError.value = message
+  } finally {
+    isSaving.value = false
   }
-
-  const blobKey = await db.putImageBlob(data.optimizedBlob)
-  savedBlobKey.value = blobKey
-
-  const blob = await db.getImageBlob(blobKey)
-  if (!blob) return
-
-  if (savedPreviewUrl.value) {
-    URL.revokeObjectURL(savedPreviewUrl.value)
-  }
-
-  savedPreviewUrl.value = URL.createObjectURL(blob)
 }
 
 function onReset() {
@@ -305,5 +329,12 @@ async function onClickSavedImage() {
 
 .action-buttons {
   margin-top: 2px;
+}
+
+.error-message {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
 }
 </style>

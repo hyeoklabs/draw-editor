@@ -23,6 +23,20 @@ interface JpegConvertOptions {
   maxHeight?: number
 }
 
+interface GestureState {
+  initialDistance: number
+  initialScale: number
+  initialPanX: number
+  initialPanY: number
+  initialCenterX: number
+  initialCenterY: number
+  pinching: boolean
+  panning: boolean
+  panStartX: number
+  panStartY: number
+  panMoveDistance: number
+}
+
 interface MarkStatePayload {
   hasChecked: boolean
   markCount: number
@@ -65,7 +79,7 @@ export function useDrawEditor() {
   const marks = ref<CheckMark[]>([])
   const markStateListeners = new Set<MarkStateListener>()
 
-  const pinchState = ref({
+  const pinchState = ref<GestureState>({
     initialDistance: 0,
     initialScale: 1,
     initialPanX: 0,
@@ -85,6 +99,12 @@ export function useDrawEditor() {
   const TOUCH_PAN_START_THRESHOLD = isAndroidDevice ? 12 : 8
   const TOUCH_TAP_MAX_DISTANCE = isAndroidDevice ? 16 : 10
 
+  // 출력/압축 기본값
+  const MAX_OPTIMIZED_BYTES = 256 * 1024
+  const LOSSY_QUALITY_START = 1.0
+  const LOSSY_QUALITY_MIN = 0.5
+  const LOSSY_QUALITY_STEP = 0.05
+
   // ---------------------------------------------------------------------------
   // 4) 저수준 수학 유틸 (clamp, 경계, transform)
   // ---------------------------------------------------------------------------
@@ -99,6 +119,18 @@ export function useDrawEditor() {
     for (const listener of markStateListeners) {
       listener(payload)
     }
+  }
+
+  // 마크 배열 갱신 + 외부 상태 이벤트를 한 번에 처리한다.
+  function updateMarks(nextMarks: CheckMark[]) {
+    marks.value = nextMarks
+    emitMarkStateChanged()
+  }
+
+  // 보안/안정성: 명확히 잘못된 스킴은 로딩하지 않는다.
+  function isBlockedImageSrc(src: string) {
+    const normalized = src.trim().toLowerCase()
+    return normalized.startsWith('javascript:')
   }
 
   // 외부(HomeView 등)에서 마크 상태 변화를 구독할 수 있는 이벤트 API.
@@ -358,12 +390,15 @@ export function useDrawEditor() {
 
   // 외부 이미지 소스를 에디터의 베이스 이미지로 로드한다.
   async function loadBaseImage(src: string) {
+    if (isBlockedImageSrc(src)) {
+      throw new Error('Blocked image src scheme')
+    }
+
     const img = await loadImage(src)
 
     baseImage.value = img
     baseImageSrc.value = src
-    marks.value = []
-    emitMarkStateChanged()
+    updateMarks([])
 
     // 실제 이미지 해상도(원본 픽셀)를 캔버스 내부 버퍼 크기로 사용한다.
     setCanvasSize(img.naturalWidth, img.naturalHeight)
@@ -454,8 +489,7 @@ export function useDrawEditor() {
   // 저장된 편집 상태(base + marks)를 그대로 복원한다.
   async function restore(payload: RestorePayload) {
     await loadBaseImage(payload.baseImageSrc)
-    marks.value = payload.marks.map((item) => ({ ...item }))
-    emitMarkStateChanged()
+    updateMarks(payload.marks.map((item) => ({ ...item })))
     render()
   }
 
@@ -481,12 +515,14 @@ export function useDrawEditor() {
 
   // 지우기 모드: 클릭 지점 반경 안의 마크만 제거한다.
   function removeNearMark(x: number, y: number) {
-    marks.value = marks.value.filter((mark) => {
+    const nextMarks = marks.value.filter((mark) => {
       const eraseRadius = (mark.size ?? markSize.value) + 6
       const dx = mark.x - x
       const dy = mark.y - y
       return Math.sqrt(dx * dx + dy * dy) > eraseRadius
     })
+
+    updateMarks(nextMarks)
   }
 
   // 화면 좌표(clientX/Y)를 캔버스 픽셀 좌표로 변환한 뒤 체크/지우기를 실행한다.
@@ -508,24 +544,22 @@ export function useDrawEditor() {
 
     if (mode.value === 'check') {
       // 단일 모드에서는 기존 마크를 비우고 마지막 한 개만 유지한다.
-      if (!allowMulti.value) {
-        marks.value = []
-      }
-
-      marks.value.push({
+      const nextMarks = allowMulti.value ? [...marks.value] : []
+      nextMarks.push({
         x,
         y,
         shape: shape.value,
         size: markSize.value,
         color: markColor.value,
       })
+
+      updateMarks(nextMarks)
     }
 
     if (mode.value === 'erase') {
       removeNearMark(x, y)
     }
 
-    emitMarkStateChanged()
     render()
   }
 
@@ -681,8 +715,7 @@ export function useDrawEditor() {
 
   // 마크만 초기화하고 베이스 이미지는 유지한다.
   function clearMarks() {
-    marks.value = []
-    emitMarkStateChanged()
+    updateMarks([])
     render()
   }
 
@@ -851,14 +884,9 @@ export function useDrawEditor() {
     outputCanvas: HTMLCanvasElement,
     mimeType: 'image/webp' | 'image/jpeg'
   ): Promise<OptimizedAsset | null> {
-    const maxBytes = 256 * 1024
-    const qualityStart = 1.0
-    const qualityMin = 0.5
-    const qualityStep = 0.05
-
     let bestBlob: Blob | null = null
 
-    for (let q = qualityStart; q >= qualityMin; q -= qualityStep) {
+    for (let q = LOSSY_QUALITY_START; q >= LOSSY_QUALITY_MIN; q -= LOSSY_QUALITY_STEP) {
       const trial = await canvasToBlob(outputCanvas, mimeType, Number(q.toFixed(2)))
       if (!trial) {
         continue
@@ -866,7 +894,7 @@ export function useDrawEditor() {
 
       bestBlob = trial
 
-      if (trial.size <= maxBytes) {
+      if (trial.size <= MAX_OPTIMIZED_BYTES) {
         const dataUrl = await blobToDataUrl(trial)
         return { dataUrl, blob: trial, mimeType: trial.type || mimeType }
       }
