@@ -21,3 +21,7 @@ export interface CanvasSession {
   height: number
   updatedAt: number
 }
+
+export interface CanvasSessionMap {
+  [pageKey: string]: CanvasSession
+}

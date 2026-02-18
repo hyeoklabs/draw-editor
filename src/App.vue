@@ -10,10 +10,10 @@
 
     <div class="content-grid">
       <aside class="left-sidebar">
-        <button class="side-btn" type="button">A</button>
-        <button class="side-btn" type="button">B</button>
-        <button class="side-btn" type="button">C</button>
-        <button class="side-btn" type="button">D</button>
+        <RouterLink class="side-btn" :to="{ name: 'home' }">A</RouterLink>
+        <RouterLink class="side-btn" :to="{ name: 'b' }">B</RouterLink>
+        <RouterLink class="side-btn" :to="{ name: 'c' }">C</RouterLink>
+        <RouterLink class="side-btn" :to="{ name: 'd' }">D</RouterLink>
       </aside>
 
       <main class="app-content">
@@ -77,11 +77,20 @@
 }
 
 .side-btn {
+  display: grid;
+  place-items: center;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #f8fafc;
   font-weight: 700;
   color: #475569;
+  text-decoration: none;
+}
+
+.side-btn.router-link-active {
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  background: #eff6ff;
 }
 
 .app-content {

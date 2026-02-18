@@ -7,13 +7,19 @@ interface RestorePayload {
 }
 
 interface OptimizedAsset {
-  dataUrl: string
   blob: Blob
   mimeType: string
 }
 
 interface CompleteOptions {
   format?: OptimizeFormat
+  includeDataUrl?: boolean
+  includeFile?: boolean
+}
+
+interface SessionSnapshot {
+  baseImageSrc: string
+  marks: CheckMark[]
 }
 
 interface JpegConvertOptions {
@@ -719,6 +725,18 @@ export function useDrawEditor() {
     render()
   }
 
+  // 현재 편집 상태를 경량 JSON으로 스냅샷한다.
+  function getSessionSnapshot(): SessionSnapshot | null {
+    if (!baseImageSrc.value) {
+      return null
+    }
+
+    return {
+      baseImageSrc: baseImageSrc.value,
+      marks: marks.value.map((item) => ({ ...item })),
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // 10) 내보내기/변환 유틸
   // ---------------------------------------------------------------------------
@@ -836,25 +854,30 @@ export function useDrawEditor() {
     }
 
     const optimizedAsset = await optimizeCanvas(outputCanvas, options)
+    const shouldIncludeDataUrl = Boolean(options.includeDataUrl)
+    const shouldIncludeFile = Boolean(options.includeFile)
     const ext = optimizedAsset.mimeType.split('/')[1] ?? 'jpg'
     const fileName = buildFileName(ext)
-
-    const optimizedFile = new File([optimizedAsset.blob], fileName, {
-      type: optimizedAsset.mimeType,
-    })
+    const optimizedDataUrl = shouldIncludeDataUrl
+      ? await blobToDataUrl(optimizedAsset.blob)
+      : undefined
+    const optimizedFile = shouldIncludeFile
+      ? new File([optimizedAsset.blob], fileName, {
+          type: optimizedAsset.mimeType,
+        })
+      : undefined
 
     return {
-      optimizedAsset,
       baseImageSrc: baseImageSrc.value,
-      marks: marks.value.map((item) => ({ ...item })),
-      optimizedDataUrl: optimizedAsset.dataUrl,
-      optimizedBlob: optimizedAsset.blob,
-      optimizedFile,
-      optimizedMimeType: optimizedAsset.mimeType,
-      optimizedFileName: fileName,
-      byteSize: optimizedAsset.blob.size,
       width: outputCanvas.width,
       height: outputCanvas.height,
+      marks: marks.value.map((item) => ({ ...item })),
+      optimizedDataUrl,
+      optimizedBlob: optimizedAsset.blob,
+      optimizedMimeType: optimizedAsset.mimeType,
+      optimizedFile,
+      optimizedFileName: fileName,
+      byteSize: optimizedAsset.blob.size,
     }
   }
 
@@ -895,8 +918,7 @@ export function useDrawEditor() {
       bestBlob = trial
 
       if (trial.size <= MAX_OPTIMIZED_BYTES) {
-        const dataUrl = await blobToDataUrl(trial)
-        return { dataUrl, blob: trial, mimeType: trial.type || mimeType }
+        return { blob: trial, mimeType: trial.type || mimeType }
       }
     }
 
@@ -904,8 +926,7 @@ export function useDrawEditor() {
       return null
     }
 
-    const dataUrl = await blobToDataUrl(bestBlob)
-    return { dataUrl, blob: bestBlob, mimeType: bestBlob.type || mimeType }
+    return { blob: bestBlob, mimeType: bestBlob.type || mimeType }
   }
 
   // PNG 최적화: 무손실 출력
@@ -915,8 +936,7 @@ export function useDrawEditor() {
       throw new Error('Failed to create PNG blob')
     }
 
-    const dataUrl = await blobToDataUrl(blob)
-    return { dataUrl, blob, mimeType: blob.type || 'image/png' }
+    return { blob, mimeType: blob.type || 'image/png' }
   }
 
   // 출력 포맷 옵션에 맞춰 최적화 분기를 수행한다.
@@ -988,6 +1008,7 @@ export function useDrawEditor() {
 
     // 편집
     clearMarks,
+    getSessionSnapshot,
     onMarkStateChange,
 
     // 완료/내보내기

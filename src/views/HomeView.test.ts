@@ -6,6 +6,7 @@ import HomeView from './HomeView.vue'
 
 const useDrawEditorMock = vi.fn()
 const useDatabaseMock = vi.fn()
+const useEditorSessionStoreMock = vi.fn()
 type MarkState = { hasChecked: boolean; markCount: number }
 // eslint-disable-next-line no-unused-vars
 type MarkStateListener = (..._params: [MarkState]) => void
@@ -18,6 +19,10 @@ vi.mock('@/composables/useDatabase', () => ({
   useDatabase: () => useDatabaseMock(),
 }))
 
+vi.mock('@/stores/editorSessionStore', () => ({
+  useEditorSessionStore: () => useEditorSessionStoreMock(),
+}))
+
 function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -25,6 +30,7 @@ function flushPromises() {
 describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
   })
 
   it('체크 상태 이벤트에 따라 Save 버튼이 활성/비활성된다', async () => {
@@ -45,6 +51,7 @@ describe('HomeView', () => {
       complete: vi.fn(async () => null),
       clearMarks: vi.fn(),
       renderSavedBlob: vi.fn(async () => {}),
+      getSessionSnapshot: vi.fn(() => null),
       resetZoom: vi.fn(),
       setMode: vi.fn(),
       setShape: vi.fn(),
@@ -57,9 +64,18 @@ describe('HomeView', () => {
       putImageBlob: vi.fn(async () => 'blob-key'),
       getImageBlob: vi.fn(async () => new Blob(['mock'], { type: 'image/jpeg' })),
     }
+    const sessionStoreMock = {
+      hydrateFromLocalStorage: vi.fn(),
+      getSession: vi.fn(() => null),
+      upsertSession: vi.fn(),
+      clearSession: vi.fn(),
+      persistTempToLocalStorage: vi.fn(),
+      getApproxSessionJsonBytes: vi.fn(() => 0),
+    }
 
     useDrawEditorMock.mockReturnValue(editorMock)
     useDatabaseMock.mockReturnValue(dbMock)
+    useEditorSessionStoreMock.mockReturnValue(sessionStoreMock)
 
     const wrapper = mount(HomeView)
     await nextTick()
@@ -115,6 +131,10 @@ describe('HomeView', () => {
       complete: vi.fn(async () => completeResult),
       clearMarks: vi.fn(),
       renderSavedBlob: vi.fn(async () => {}),
+      getSessionSnapshot: vi.fn(() => ({
+        baseImageSrc: 'mock://image',
+        marks: [],
+      })),
       resetZoom: vi.fn(),
       setMode: vi.fn(),
       setShape: vi.fn(),
@@ -127,9 +147,18 @@ describe('HomeView', () => {
       putImageBlob: vi.fn(async () => 'blob-key'),
       getImageBlob: vi.fn(async () => new Blob(['saved'], { type: 'image/jpeg' })),
     }
+    const sessionStoreMock = {
+      hydrateFromLocalStorage: vi.fn(),
+      getSession: vi.fn(() => null),
+      upsertSession: vi.fn(),
+      clearSession: vi.fn(),
+      persistTempToLocalStorage: vi.fn(),
+      getApproxSessionJsonBytes: vi.fn(() => 0),
+    }
 
     useDrawEditorMock.mockReturnValue(editorMock)
     useDatabaseMock.mockReturnValue(dbMock)
+    useEditorSessionStoreMock.mockReturnValue(sessionStoreMock)
 
     const wrapper = mount(HomeView)
     await nextTick()
@@ -151,6 +180,8 @@ describe('HomeView', () => {
     expect(editorMock.complete).toHaveBeenCalledTimes(1)
     expect(dbMock.putImageBlob).toHaveBeenCalledTimes(1)
     expect(dbMock.getImageBlob).toHaveBeenCalledTimes(1)
+    expect(sessionStoreMock.upsertSession).toHaveBeenCalledTimes(1)
+    expect(sessionStoreMock.persistTempToLocalStorage).toHaveBeenCalled()
   })
 
   it('체크가 없으면 Save 클릭 시 저장 플로우를 호출하지 않는다', async () => {
@@ -168,6 +199,10 @@ describe('HomeView', () => {
       complete: vi.fn(async () => null),
       clearMarks: vi.fn(),
       renderSavedBlob: vi.fn(async () => {}),
+      getSessionSnapshot: vi.fn(() => ({
+        baseImageSrc: 'mock://image',
+        marks: [],
+      })),
       resetZoom: vi.fn(),
       setMode: vi.fn(),
       setShape: vi.fn(),
@@ -180,9 +215,18 @@ describe('HomeView', () => {
       putImageBlob: vi.fn(async () => 'blob-key'),
       getImageBlob: vi.fn(async () => null),
     }
+    const sessionStoreMock = {
+      hydrateFromLocalStorage: vi.fn(),
+      getSession: vi.fn(() => null),
+      upsertSession: vi.fn(),
+      clearSession: vi.fn(),
+      persistTempToLocalStorage: vi.fn(),
+      getApproxSessionJsonBytes: vi.fn(() => 0),
+    }
 
     useDrawEditorMock.mockReturnValue(editorMock)
     useDatabaseMock.mockReturnValue(dbMock)
+    useEditorSessionStoreMock.mockReturnValue(sessionStoreMock)
 
     const wrapper = mount(HomeView)
     await nextTick()

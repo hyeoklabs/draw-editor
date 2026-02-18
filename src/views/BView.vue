@@ -47,7 +47,7 @@ import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 import IMAGE from '@/assets/test.jpg'
 
-const PAGE_KEY = 'home'
+const PAGE_KEY = 'page-b'
 
 const editor = ref<ReturnType<typeof useDrawEditor> | null>(null)
 const canvasWrapRef = ref<HTMLDivElement | null>(null)
